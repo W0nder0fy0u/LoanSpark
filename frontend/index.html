@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LoanSpark — Smart Loan Application</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="index.css">
+</head>
+<body>
+<div class="atmosphere"></div>
+
+<header>
+  <div class="logo">⚡</div>
+  <div class="brand">Loan<span>Spark</span></div>
+  <div class="tagline">AI Underwriting</div>
+</header>
+
+<div class="progress-wrap">
+  <div class="progress-track">
+    <div class="progress-fill" id="progress-fill"></div>
+  </div>
+  <div class="progress-label">
+    <span id="progress-step">Initializing...</span>
+    <span id="progress-pct">0%</span>
+  </div>
+</div>
+
+<!-- Main Chat Interface -->
+<div id="chat-area"></div>
+
+<!-- Response Area (Sticky at bottom) -->
+<div id="question-area" style="display:none">
+  <div class="question-card-inner">
+    <div class="question-text" id="question-text"></div>
+    <div id="answer-input"></div>
+  </div>
+</div>
+
+<!-- Final Result Display -->
+<div id="result-area" style="display:none"></div>
+
+<script>
+const API = 'http://localhost:8000';
+
+let sessionId        = null;
+let currentQuestion  = null;
+let questionStart    = null;
+let editCount        = 0;
+let sessionStart     = Date.now();
+let isProcessing     = false;
+let applicantName    = '';
+
+// ── App Lifecycle ─────────────────────────────────────────────────────────
+
+async function init() {
+  await startSession();
+  addBotMessage("Welcome to LoanSpark! 👋 I'm your virtual lending assistant. Let's get your application processed in under 5 minutes.");
+  await sleep(1000);
+  await loadNextQuestion();
+}
+
+async function startSession(retries = 3) {
+  for (let i = 1; i <= retries; i++) {
+    try {
+      const res  = await fetch(`${API}/start-session`, { method: 'POST' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      sessionId  = data.session_id;
+      return;
+    } catch {
+      if (i === retries) {
+        addBotMessage('⚠️ Systems are temporarily offline. Please refresh in a few moments.');
+        return;
+      }
+      await sleep(600 * i);
+    }
+  }
+}
+
+// ── Messaging UI ──────────────────────────────────────────────────────────
+
+function addBotMessage(text) {
+  const area = document.getElementById('chat-area');
+  const el   = document.createElement('div');
+  el.className = 'msg bot';
+  el.innerHTML = `
+    <div class="avatar bot-av">⚡</div>
+    <div class="bubble bot">${text}</div>
+  `;
+  area.appendChild(el);
+  scrollBottom();
+}
+
+function addUserMessage(text) {
+  const area = document.getElementById('chat-area');
+  const el   = document.createElement('div');
+  el.className = 'msg user';
+  el.innerHTML = `
+    <div class="avatar user-av">${applicantName ? applicantName[0].toUpperCase() : '?'}</div>
+    <div class="bubble user">${text}</div>
+  `;
+  area.appendChild(el);
+  scrollBottom();
+}
+
+function showTyping() {
+  const area = document.getElementById('chat-area');
+  const el   = document.createElement('div');
+  el.className = 'msg bot';
+  el.id = 'typing-indicator';
+  el.innerHTML = `
+    <div class="avatar bot-av">⚡</div>
+    <div class="bubble bot"><div class="typing"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></div>
+  `;
+  area.appendChild(el);
+  scrollBottom();
+}
+
+function hideTyping() {
+  document.getElementById('typing-indicator')?.remove();
+}
+
+function scrollBottom() {
+  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── Flow Control ──────────────────────────────────────────────────────────
+
+async function loadNextQuestion() {
+  if (!sessionId || isProcessing) return;
+  isProcessing = true;
+  showTyping();
+  await sleep(600);
+
+  try {
+    const res  = await fetch(`${API}/next-question?session_id=${sessionId}`);
+    hideTyping();
+    const data = await res.json();
+
+    if (data.done) {
+      document.getElementById('question-area').style.display = 'none';
+      const msg = applicantName
+        ? `Perfect, ${applicantName}! ✅ I have everything I need. Calculating your underwriting decision now...`
+        : '✅ Data gathered. Performing final risk assessment...';
+      addBotMessage(msg);
+      await sleep(1500);
+      await getFinalDecision();
+    } else {
+      updateProgress(data.progress, data.answered, data.total);
+      showQuestion(data.question);
+    }
+  } catch {
+    hideTyping();
+    addBotMessage('⚠️ Connection lost. Please check your internet and try again.');
+  }
+
+  isProcessing = false;
+}
+
+function updateProgress(pct, done, total) {
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('progress-step').textContent = `Step ${done + 1} of ${total}`;
+  document.getElementById('progress-pct').textContent  = pct + '%';
+}
+
+function showQuestion(q) {
+  currentQuestion = q;
+  questionStart   = Date.now();
+  editCount       = 0;
+
+  const qArea  = document.getElementById('question-area');
+  const qText  = document.getElementById('question-text');
+  const qInput = document.getElementById('answer-input');
+
+  qText.textContent = q.question;
+  qInput.innerHTML  = '';
+  qArea.style.display = 'flex';
+
+  if (q.type === 'choice' && q.choices) {
+    const wrap = document.createElement('div');
+    wrap.className = 'choices';
+    q.choices.forEach(choice => {
+      const btn = document.createElement('button');
+      btn.className = 'choice-btn';
+      btn.textContent = choice;
+      btn.onclick = () => {
+        wrap.querySelectorAll('.choice-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        setTimeout(() => submitAnswer(choice), 400);
+      };
+      wrap.appendChild(btn);
+    });
+    qInput.appendChild(wrap);
+  } else {
+    const row = document.createElement('div');
+    row.className = 'input-row';
+
+    const inp = document.createElement('input');
+    inp.type        = q.type === 'number' ? 'number' : 'text';
+    inp.placeholder = q.placeholder || 'Answer here...';
+
+    inp.addEventListener('input', () => editCount++);
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter') submitAnswer(inp.value.trim());
+    });
+
+    const btn = document.createElement('button');
+    btn.className   = 'submit-btn';
+    btn.textContent = 'Next →';
+    btn.onclick     = () => submitAnswer(inp.value.trim());
+
+    row.appendChild(inp);
+    row.appendChild(btn);
+    qInput.appendChild(row);
+    setTimeout(() => inp.focus(), 150);
+  }
+
+  scrollBottom();
+}
+
+async function submitAnswer(value) {
+  if (typeof value === 'string') value = value.trim();
+  if (!value || !currentQuestion || isProcessing) return;
+
+  if (currentQuestion.type === 'number') {
+    const num = parseFloat(String(value).replace(/,/g, ''));
+    if (isNaN(num) || num < 0) return;
+  }
+
+  if (currentQuestion.key === 'name') {
+    applicantName = value.split(' ')[0];
+  }
+
+  const responseTime = (Date.now() - questionStart) / 1000;
+  isProcessing = true;
+  document.getElementById('question-area').style.display = 'none';
+  addUserMessage(value);
+
+  // Silently log behavior
+  fetch(`${API}/behavior-event`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      session_id: sessionId,
+      question_key: currentQuestion.key,
+      response_time_s: Math.round(responseTime * 10) / 10,
+      num_edits: editCount,
+      page_switches: 0,
+      total_session_time: (Date.now() - sessionStart) / 1000,
+    }),
+  }).catch(() => {});
+
+  try {
+    await fetch(`${API}/submit-answer`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id:      sessionId,
+        question_key:    currentQuestion.key,
+        question_text:   currentQuestion.question,
+        answer_value:    value,
+        response_time_s: Math.round(responseTime * 10) / 10,
+        num_edits:       editCount,
+        page_switches:   0,
+      }),
+    });
+  } catch {
+    addBotMessage('⚠️ Error saving response.');
+    isProcessing = false;
+    return;
+  }
+
+  isProcessing = false;
+  await sleep(300);
+  await loadNextQuestion();
+}
+
+// ── Underwriting Result ───────────────────────────────────────────────────
+
+async function getFinalDecision() {
+  showTyping();
+  try {
+    const res = await fetch(`${API}/final-decision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: sessionId,
+        total_session_time: (Date.now() - sessionStart) / 1000,
+      }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    hideTyping();
+    showResult(data);
+  } catch (e) {
+    hideTyping();
+    addBotMessage('⚠️ Technical failure during underwriting. ' + e.message);
+  }
+}
+
+function showResult(data) {
+  const area = document.getElementById('result-area');
+  const dec  = data.decision;
+  const prob = data.loan_probability;
+
+  const cls   = dec === 'APPROVE' ? 'approve' : dec === 'REVIEW' ? 'review' : 'reject';
+  const icon  = dec === 'APPROVE' ? '🎯' : dec === 'REVIEW' ? '⚖️' : '🚫';
+  const title = dec === 'APPROVE' ? 'Approval Target Met' : dec === 'REVIEW' ? 'Pending Verification' : 'Criteria Not Met';
+
+  const suggestionList = (data.suggestions || '')
+    .split('\n')
+    .map(l => l.replace(/^\d+\.\s*/, '').trim())
+    .filter(Boolean);
+
+  const suggHtml = suggestionList.map((line, i) => `
+    <div class="suggestion-item">
+      <div class="sugg-num">${i + 1}</div>
+      <div>${line}</div>
+    </div>
+  `).join('');
+
+  area.style.display = 'block';
+  area.innerHTML = `
+    <div class="result-card">
+      <div class="result-header">
+        <span class="result-icon">${icon}</span>
+        <div class="result-title">${title}</div>
+        <div class="prob-pill ${cls}">Underwriting Score: ${prob}%</div>
+      </div>
+      <div class="result-body">
+        <div class="result-message">${data.user_message}</div>
+
+        ${suggHtml ? `
+          <h4 style="margin-bottom:1rem;font-size:0.75rem;font-weight:700;color:var(--text-subtle);text-transform:uppercase;letter-spacing:0.08em">How to Proceed</h4>
+          ${suggHtml}
+        ` : ''}
+
+        <button class="restart-btn" onclick="location.reload()">Start New Application</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('chat-area').style.display = 'none';
+  area.scrollIntoView({ behavior: 'smooth' });
+}
+
+init();
+</script>
+</body>
+</html>

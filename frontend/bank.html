@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LoanSpark — Risk & Fraud Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="bank.css">
+</head>
+<body>
+<div class="atmosphere"></div>
+
+<!-- Login -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-icon">⚡</div>
+    <h2>LoanSpark Portal</h2>
+    <p>Secure access to fraud detection &amp; risk analysis dashboard.</p>
+    <input type="password" id="bank-key-input" placeholder="Bank Access Key"
+           onkeydown="if(event.key==='Enter') doLogin()" />
+    <button class="login-btn" onclick="doLogin()">Sign In to Dashboard</button>
+    <div class="login-err" id="login-err">Invalid access key. Authentication failed.</div>
+  </div>
+</div>
+
+<!-- Dashboard -->
+<div id="main-screen" style="display:none">
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="bank-logo">🏢</div>
+      <div class="bank-name">Loan<span>Spark</span> Financial</div>
+      <div class="restricted-badge">Restricted Access</div>
+    </div>
+    <div class="topbar-right">
+      <div class="topbar-time" id="live-time"></div>
+      <button class="refresh-btn" onclick="loadSessions()">⟳ Refresh</button>
+    </div>
+  </div>
+
+  <div class="layout">
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-title">Incoming Desk</div>
+        <div class="session-count" id="session-count">—</div>
+      </div>
+      <div id="sessions-list">
+        <div class="empty-state">
+          <div class="empty-icon">📂</div>
+          <p>Syncing applications...</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="detail-panel" id="detail-panel">
+      <div class="empty-state">
+        <div class="empty-icon">🔍</div>
+        <h2 style="font-size:1.1rem;font-weight:700;color:var(--text-muted)">Select an Application</h2>
+        <p style="font-size:0.875rem">Choose an entry from the sidebar to review risk analysis.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API      = 'http://localhost:8000';
+let BANK_KEY   = '';
+let currentSid = null;
+
+// Live clock
+function updateClock() {
+  const timeEl = document.getElementById('live-time');
+  if (timeEl) {
+    timeEl.textContent = new Date().toLocaleTimeString('en-IN', { hour12: false });
+  }
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Auth ──────────────────────────────────────────────────────────────────
+
+function doLogin() {
+  const key = document.getElementById('bank-key-input').value.trim();
+  if (!key) return;
+  BANK_KEY = key;
+  loadSessions();
+}
+
+async function loadSessions() {
+  try {
+    const res = await fetch(`${API}/all-sessions?bank_key=${BANK_KEY}`);
+    if (res.status === 403) {
+      const err = document.getElementById('login-err');
+      if (err) err.style.display = 'block';
+      BANK_KEY = '';
+      return;
+    }
+    const data = await res.json();
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('main-screen').style.display  = 'block';
+    renderSessions(data.sessions);
+  } catch {
+    const err = document.getElementById('login-err');
+    if (err) {
+      err.textContent = 'Cannot connect to server. Is the backend running?';
+      err.style.display = 'block';
+    }
+  }
+}
+
+// ── Session list ──────────────────────────────────────────────────────────
+
+function renderSessions(sessions) {
+  const list = document.getElementById('sessions-list');
+  const countEl = document.getElementById('session-count');
+  if (countEl) countEl.textContent = sessions.length;
+
+  if (!sessions.length) {
+    list.innerHTML = '<div class="empty-state"><p>No applications yet</p></div>';
+    return;
+  }
+
+  list.innerHTML = sessions.map(s => {
+    const dec    = s.final_decision || 'PENDING';
+    const cls    = dec === 'APPROVE' ? 's-approve' : dec === 'REVIEW' ? 's-review' : dec === 'REJECT' ? 's-reject' : 's-pending';
+    const shortId = s.session_id.substring(0, 8).toUpperCase();
+    const dt     = s.created_at ? new Date(s.created_at).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+    const fraud  = s.fraud_probability != null ? (s.fraud_probability * 100).toFixed(1) + '%' : '—';
+
+    return `
+      <div class="session-item ${s.session_id === currentSid ? 'active' : ''}"
+           onclick="loadReport('${s.session_id}', this)">
+        <div class="session-id">${shortId}…</div>
+        <div class="session-meta">
+          <span class="s-badge ${cls}">${dec}</span>
+          <span style="font-size:11px;color:var(--text-subtle)">Fraud: ${fraud}</span>
+        </div>
+        <div class="session-time">${dt}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ── Report view ───────────────────────────────────────────────────────────
+
+async function loadReport(sessionId, el) {
+  currentSid = sessionId;
+  document.querySelectorAll('.session-item').forEach(i => i.classList.remove('active'));
+  el.classList.add('active');
+
+  const panel = document.getElementById('detail-panel');
+  panel.innerHTML = '<div class="empty-state"><div class="empty-icon">⏳</div><p>Generating analysis...</p></div>';
+
+  try {
+    const res = await fetch(`${API}/bank-report/${sessionId}?bank_key=${BANK_KEY}`);
+    if (!res.ok) throw new Error(await res.text());
+    renderReport(await res.json());
+  } catch (e) {
+    panel.innerHTML = `<div class="empty-state"><div class="empty-icon">❌</div><p>Error: ${e.message}</p></div>`;
+  }
+}
+
+function renderReport(data) {
+  const r   = data.bank_report;
+  const dec = r.final_decision;
+  const risk= r.risk_level;
+  const lp  = parseFloat(r.loan_approval_probability);
+  const fp  = parseFloat(r.fraud_probability);
+
+  const riskIcon = { MINIMAL: '✅', LOW: '🟢', MEDIUM: '🟡', HIGH: '🔴', CRITICAL: '🚨' }[risk] || '❓';
+  const lpColor  = lp >= 65 ? 'green' : lp >= 45 ? 'amber' : 'red';
+  const fpColor  = fp < 30  ? 'green' : fp < 60  ? 'amber' : 'red';
+  const decColor = dec === 'APPROVE' ? 'green' : dec === 'REVIEW' ? 'amber' : 'red';
+
+  const lFill = `${lp}%`;
+  const fFill = `${fp}%`;
+  const lColor = lp >= 65 ? 'var(--green)' : lp >= 45 ? 'var(--amber)' : 'var(--red)';
+  const fColor = fp < 30  ? 'var(--green)' : fp < 60  ? 'var(--amber)' : 'var(--red)';
+
+  const finFlags = (r.financial_flags || []).map(f => `
+    <div class="flag-row">
+      <div class="flag-dot ${f.includes('No major') ? 'green' : 'red'}"></div>
+      <span>${f}</span>
+    </div>`).join('');
+
+  const behFlags = (r.behavioral_analysis || []).map(f => `
+    <div class="flag-row">
+      <div class="flag-dot ${f.includes('No significant') ? 'green' : 'amber'}"></div>
+      <span>${f}</span>
+    </div>`).join('');
+
+  const fraudFactors = (r.top_fraud_factors || []).map(f => `
+    <div class="flag-row">
+      <div class="flag-dot amber"></div>
+      <span>${f}</span>
+    </div>`).join('');
+
+  const actions = (r.action_items || []).map((a, i) => `
+    <div class="action-row">
+      <div class="action-num">${i + 1}</div>
+      <span>${a}</span>
+    </div>`).join('');
+
+  const applicant = r.applicant_summary || {};
+  const applicantRows = Object.entries(applicant).map(([k, v]) => `
+    <div class="applicant-row">
+      <span class="applicant-label">${k.replace(/_/g, ' ')}</span>
+      <span class="applicant-value">${v}</span>
+    </div>`).join('');
+
+  const behScore = parseFloat(r.behavioral_score || 0);
+  const behColor = behScore > 0.4 ? 'var(--red)' : 'var(--green)';
+
+  document.getElementById('detail-panel').innerHTML = `
+    <div class="metrics-row">
+      <div class="metric-card">
+        <div class="metric-label">System Decision</div>
+        <div class="metric-value ${decColor}" style="font-size:1.1rem">${dec}</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Loan Score</div>
+        <div class="metric-value ${lpColor}">${lp}%</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Fraud Probability</div>
+        <div class="metric-value ${fpColor}">${fp}%</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Global Risk</div>
+        <div class="metric-value ${fpColor}" style="font-size:1rem">${risk}</div>
+      </div>
+    </div>
+
+    <div class="risk-banner">
+      <span class="risk-icon">${riskIcon}</span>
+      <div class="risk-text">
+        <h3>${risk} Risk — ${dec} recommended</h3>
+        <p>${r.decision_reason}</p>
+      </div>
+    </div>
+
+    <div class="gauges-row">
+      <div class="gauge-card">
+        <div class="gauge-title">Loan Approval Confidence</div>
+        <div class="gauge-value" style="color:${lColor}">${lp}%</div>
+        <div class="gauge-track">
+          <div class="gauge-fill" style="width:${lFill};background:${lColor}"></div>
+        </div>
+        <div class="gauge-ends"><span>Weak</span><span>Strong</span></div>
+      </div>
+      <div class="gauge-card">
+        <div class="gauge-title">Fraud Risk Vector</div>
+        <div class="gauge-value" style="color:${fColor}">${fp}%</div>
+        <div class="gauge-track">
+          <div class="gauge-fill" style="width:${fFill};background:${fColor}"></div>
+        </div>
+        <div class="gauge-ends"><span>Clean</span><span>Critical</span></div>
+      </div>
+    </div>
+
+    <div class="section-grid">
+      <div class="section-card">
+        <div class="section-hd">👤 KYC Summary</div>
+        ${applicantRows}
+        <div class="applicant-row">
+          <span class="applicant-label">Behavioral Anomaly</span>
+          <span class="applicant-value" style="color:${behColor}">${(behScore * 100).toFixed(1)}%</span>
+        </div>
+      </div>
+      <div class="section-card">
+        <div class="section-hd">📊 Financial Health</div>
+        ${finFlags || '<p style="color:var(--text-subtle);font-size:0.875rem">No flags detected</p>'}
+      </div>
+    </div>
+
+    <div class="section-grid" style="margin-top:1rem">
+      <div class="section-card">
+        <div class="section-hd">🕵️ Behavioral Analysis</div>
+        ${behFlags || '<p style="color:var(--text-subtle);font-size:0.875rem">No anomalies</p>'}
+      </div>
+      <div class="section-card">
+        <div class="section-hd">⚠️ Fraud Indicators</div>
+        ${fraudFactors || '<p style="color:var(--text-subtle);font-size:0.875rem">Clean footprint</p>'}
+      </div>
+    </div>
+
+    <div class="section-card full" style="margin-top:1rem">
+      <div class="section-hd">🏦 Final Recommendation & Action Plan</div>
+      <p class="recommendation-text">${r.recommendation}</p>
+      <div class="section-hd" style="margin-bottom:0.75rem">Next Steps</div>
+      ${actions}
+    </div>
+  `;
+}
+
+// Refresh logic
+setInterval(() => { if (BANK_KEY) loadSessions(); }, 30_000);
+</script>
+</body>
+</html>
