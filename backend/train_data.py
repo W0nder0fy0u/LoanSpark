@@ -1,10 +1,8 @@
 """
-CAVEMAN BRAIN FOOD MAKER — NOW STRONGER!
-=========================================
+FEATURED TRAINING DATA MODULE — NOW STRONGER!
+=============================================
 Old: 5000 rows. Weak. No scaler. Brain confused.
 New: 12000 rows. Realistic. Scaler used. Brain happy.
-
-Caveman say: "More food = smarter brain. Same cook same food for train AND predict."
 """
 
 import numpy as np
@@ -22,9 +20,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 log = logging.getLogger(__name__)
 
 np.random.seed(42)
-N = 12_000  # Bigger dataset — smarter brain!
+N = 12_000  # Larger dataset for more stable training
 
-# ── FEATURE LISTS (single source of truth — import from here) ───────────────
+# Feature lists for model inputs
 LOAN_FEATURES = [
     "income", "credit_score", "employment_years", "loan_amount",
     "loan_term", "age", "existing_debts", "num_dependents",
@@ -179,13 +177,13 @@ def train_fraud_model(df):
 
 
 if __name__ == "__main__":
-    log.info("=== CAVEMAN BRAIN TRAINING RITUAL ===")
+    log.info("=== TRAINING RITUAL ===")
     loan_df = make_loan_data()
     fraud_df = make_fraud_data()
     log.info("Loan data:  %d rows | %.1f%% approved", len(loan_df), loan_df["approved"].mean()*100)
     log.info("Fraud data: %d rows | %.1f%% fraud",   len(fraud_df), fraud_df["is_fraud"].mean()*100)
 
-    # Save dataset CSV
+    # Save generated dataset
     data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
     os.makedirs(data_dir, exist_ok=True)
     fraud_df.to_csv(os.path.join(data_dir, "loan_dataset.csv"), index=False)

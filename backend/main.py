@@ -1,16 +1,4 @@
-"""
-FASTAPI BACKEND — THE MOUTH OF THE SYSTEM (IMPROVED)
-=====================================================
-Caveman say: "Old mouth crash on bad input. New mouth never crash.
-Old mouth lose session. New mouth track everything safe."
-
-Changes:
-- Added safe_float / safe_int helpers (no crash on bad input)
-- Proper logging throughout
-- UUID session IDs enforced
-- Better error messages
-- All endpoint errors caught and handled
-"""
+"""FastAPI backend for loan approval, fraud detection, and behavior tracking."""
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -59,7 +47,6 @@ async def startup():
 def safe_float(value, default: float = 0.0, min_val: float = None, max_val: float = None) -> float:
     """
     Parse value to float — never crash.
-    Caveman: 'Bad number? Use safe number. No crash.'
     """
     try:
         result = float(str(value).strip().replace(",", ""))
@@ -116,7 +103,6 @@ class DecisionRequest(BaseModel):
 def _parse_answers(raw_answers: Dict) -> Dict:
     """
     Convert text answers to numbers for ML models.
-    Caveman: 'User say words. We turn to numbers. No crash on bad words.'
     Uses safe_float/safe_int — never throws.
     """
     parsed = {}
@@ -185,7 +171,6 @@ def _parse_answers(raw_answers: Dict) -> Dict:
 async def start_session(request: Request):
     """
     Create new session. Returns unique session ID.
-    Caveman: 'User arrive. We give ID rock. Remember rock.'
     """
     try:
         session_id = database.create_session(
@@ -207,7 +192,6 @@ async def start_session(request: Request):
 async def next_question(session_id: str):
     """
     Get next question for session.
-    Caveman: 'What question next? Check stone tablet.'
     """
     if not session_id or not session_id.strip():
         raise HTTPException(400, "session_id is required")
@@ -242,7 +226,6 @@ async def next_question(session_id: str):
 async def submit_answer(data: AnswerSubmit):
     """
     Save answer + behavioral data.
-    Caveman: 'User answer. Write on stone. Also watch HOW they answer.'
     """
     if not data.session_id or not data.answer_value:
         raise HTTPException(400, "session_id and answer_value are required")
@@ -298,7 +281,6 @@ async def behavior_event(data: BehaviorEvent):
 async def final_decision(data: DecisionRequest):
     """
     THE BIG MOMENT. Run all ML models. Return decision.
-    Caveman: 'All questions done. Brain think. Brain say YES or NO.'
     """
     raw_answers = database.get_session_answers(data.session_id)
     if len(raw_answers) < 5:

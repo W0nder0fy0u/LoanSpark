@@ -1,11 +1,4 @@
-"""
-OLLAMA BRAIN TALKER — STRONGER JSON PARSING!
-=============================================
-Old: JSON parse break → crash. Bad.
-New: Robust parse → always fallback safely.
-
-Caveman say: "Old brain drop stone, cry. New brain drop stone, pick up. Continue."
-"""
+"""Ollama client for question flow, explanations, and safe fallback handling."""
 
 import httpx
 import json
@@ -53,7 +46,6 @@ async def _call_ollama(prompt: str, max_tokens: int = 500) -> str:
 def _safe_parse_json(raw: str) -> Optional[Dict]:
     """
     Robustly extract JSON from LLM response.
-    Caveman: 'LLM give messy JSON. We clean. We parse. No crash.'
     Handles: wrapped in markdown, extra text before/after, single quotes.
     """
     if not raw:
@@ -222,7 +214,6 @@ STATIC_QUESTION_FLOW = [
 async def get_next_question(answers: Dict, asked_keys: List[str]) -> Optional[Dict]:
     """
     Get next question. Try Ollama first; fall back to static list.
-    Caveman: 'Smart brain first. Stone tablet backup. Always have question.'
     """
     collected = set(asked_keys)
     missing   = [q for q in STATIC_QUESTION_FLOW if q["key"] not in collected]

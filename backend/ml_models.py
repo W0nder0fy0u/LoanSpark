@@ -1,11 +1,4 @@
-"""
-ML MODELS (THE TWO BRAINS) — NOW WITH PROPER SCALING!
-=======================================================
-Old: raw features fed to model. No scaler. Unstable.
-New: Pipeline object has scaler built in. Same transform train AND inference.
-
-Caveman say: "Old brain eat raw food. Get sick. New brain cook food first. Stay healthy."
-"""
+"""Load and run loan/fraud ML pipelines with safe feature handling."""
 
 import joblib
 import numpy as np
@@ -64,7 +57,6 @@ def predict_loan_approval(answers: Dict) -> Tuple[int, float, Dict]:
     INPUT:  parsed answers dict
     OUTPUT: (approved 0/1, probability 0-1, analysis dict)
 
-    Caveman: "We ask brain: give loan? Brain say YES or NO. With percent."
     Pipeline includes scaler — no mismatch possible.
     """
     bundle   = _get_loan()
@@ -114,7 +106,6 @@ def predict_fraud(answers: Dict, behavior: Dict) -> Tuple[float, Dict]:
     INPUT:  financial answers + behavioral features
     OUTPUT: (fraud_probability 0-1, risk analysis)
 
-    Caveman: "Spy brain check person. Is person liar? Brain say number."
     BANK ONLY — user never sees this.
     """
     bundle   = _get_fraud()
@@ -159,7 +150,6 @@ def predict_fraud(answers: Dict, behavior: Dict) -> Tuple[float, Dict]:
 
 def generate_loan_suggestions(answers: Dict, loan_prob: float) -> list:
     """
-    Caveman say: 'Tell user how to get better. Be honest but kind.'
     """
     suggestions  = []
     income       = _safe_float(answers.get("income"), 30_000)

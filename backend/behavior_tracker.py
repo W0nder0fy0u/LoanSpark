@@ -1,11 +1,4 @@
-"""
-BEHAVIOR TRACKER (SECRET SPY) — NOW SMARTER!
-=============================================
-Old: basic stats. Weak behavior score. Not used in fraud model.
-New: proper behavior_score (0-1). Same formula as training data. Used in fraud model.
-
-Caveman say: "Old spy lazy. New spy watch everything. Compute good number."
-"""
+"""Behavior tracker for session behavior and fraud risk."""
 
 from dataclasses import dataclass, field
 from typing import Dict, List
@@ -36,7 +29,6 @@ class BehaviorProfile:
     def compute_features(self) -> Dict:
         """
         Compute behavioral features that match fraud model training features.
-        Caveman: 'Same math in training AND in real life. Brain not confused.'
         """
         if not self.response_times:
             return {

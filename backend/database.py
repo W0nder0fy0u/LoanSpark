@@ -1,13 +1,4 @@
-"""
-DATABASE BRAIN STORAGE — IMPROVED
-===================================
-Old: save_answer had ON CONFLICT DO NOTHING (silent duplicate ignore).
-     get_conn used check_same_thread=False unsafely in async context.
-New: upsert answers properly. Added thread-safe connection per call.
-     All operations wrapped in try/except with logging.
-
-Caveman say: "Old stone tablet break quietly. New stone tablet shout when break."
-"""
+"""SQLite storage helpers for sessions, answers, behavior logs, and decisions."""
 
 import sqlite3
 import json
@@ -25,7 +16,7 @@ def get_conn() -> sqlite3.Connection:
     """Get a fresh SQLite connection. Each call gets own connection (thread-safe)."""
     conn = sqlite3.connect(str(DB_PATH), check_same_thread=False, timeout=10.0)
     conn.row_factory = sqlite3.Row
-    # Enable WAL for better concurrent read/write
+    # Enable WAL journaling
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
@@ -116,7 +107,6 @@ def create_session(ip_address: str = None, user_agent: str = None) -> str:
 def save_answer(session_id: str, question_key: str, question_text: str, answer_value: str):
     """
     Save or update an answer. Uses upsert so re-submissions overwrite old value.
-    Caveman: 'User change answer? We update stone. Old answer gone.'
     """
     try:
         conn = get_conn()

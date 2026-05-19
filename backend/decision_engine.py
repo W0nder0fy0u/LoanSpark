@@ -1,11 +1,4 @@
-"""
-DECISION ENGINE
-===============
-Caveman say: "We take loan number. We take fraud number.
-We put in magic box. Box say: APPROVE or REJECT or REVIEW."
-
-Simple logic but powerful.
-"""
+"""Decision logic combining loan approval and fraud risk."""
 
 from typing import Dict, Tuple
 
@@ -77,7 +70,6 @@ def build_bank_report(
 ) -> Dict:
     """
     Full bank report. Secret from user.
-    Caveman: 'This only for bank eyes.'
     """
     risk_level = compute_risk_level(fraud_prob)
 
